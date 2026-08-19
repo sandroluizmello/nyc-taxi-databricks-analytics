@@ -360,8 +360,8 @@ O notebook (código) **fica no GitHub**. Quando ele **executa** dentro do Databr
 
 | # | Fase | Duração | Tarefas | Status |
 |---|------|---------|--------|--------|
-| 0 | **Setup & Preparação** | 2-3h | 7 | ⬜ Não iniciado |
-| 1 | **Ingestão & Delta Lake** | 2-4h | 9 | ⬜ Não iniciado |
+| 0 | **Setup & Preparação** | 2-3h | 7 | ✅ Concluído |
+| 1 | **Ingestão & Delta Lake** | 2-4h | 9 | 🔵 Em andamento |
 | 2 | **Análise Exploratória (EDA)** | 6-8h | 10 | ⬜ Não iniciado |
 | 3 | **Feature Engineering** | 10-14h | 12 | ⬜ Não iniciado |
 | 4 | **Análise & Visualização** | 8-10h | 10 | ⬜ Não iniciado |
@@ -371,18 +371,18 @@ O notebook (código) **fica no GitHub**. Quando ele **executa** dentro do Databr
 
 ---
 
-### 📍 Fase 0: Setup & Preparação (2-3 horas)
+### 📍 Fase 0: Setup & Preparação (2-3 horas) ✅ Concluído
 
 **Objetivo:** Preparar ambiente Databricks, GitHub e estrutura inicial
 
 **Tarefas:**
-- [ ] Criar repositório GitHub (via navegador)
-- [ ] Conectar GitHub ao Databricks Repos
-- [ ] Estruturar pastas do projeto (direto no Databricks Repos)
-- [ ] Criar estrutura DBFS
-- [ ] Avaliar ambiente Databricks
-- [ ] Setup MLflow experiment
-- [ ] Documentação inicial
+- [x] Criar repositório GitHub (via navegador)
+- [x] Conectar GitHub ao Databricks Repos
+- [x] Estruturar pastas do projeto (direto no Databricks Repos)
+- [x] Criar estrutura de dados (Unity Catalog Volume `nyc_taxi`)
+- [x] Avaliar ambiente Databricks (Free Edition, Serverless)
+- [x] Setup MLflow experiment (validado — versão 3.8.1)
+- [x] Documentação inicial (este README)
 
 **Output:** Ambiente pronto, GitHub sincronizado, MLflow funcionando
 
@@ -390,7 +390,7 @@ O notebook (código) **fica no GitHub**. Quando ele **executa** dentro do Databr
 
 ---
 
-### 📍 Fase 1: Ingestão & Conversão para Delta Lake (2-4 horas)
+### 📍 Fase 1: Ingestão & Conversão para Delta Lake (2-4 horas) 🔵 Em andamento
 
 **Objetivo:** Upload de 4 CSVs e transformação em Delta Lake comprimido
 
