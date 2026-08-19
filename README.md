@@ -235,9 +235,9 @@ unzip nyc-yellow-taxi-trip-data.zip
 > | | O que guarda | Onde vive | Vai para o GitHub? |
 > |---|---|---|---|
 > | **1. Código** | Notebooks, funções Python, documentação | GitHub ↔ Databricks Repos (sincronizados automaticamente) | ✅ Sim |
-> | **2. Dados** | CSVs, tabelas Delta Lake, modelos treinados | Databricks DBFS (armazenamento interno da plataforma) | ❌ Nunca |
+> | **2. Dados** | CSVs, tabelas Delta Lake, modelos treinados | Unity Catalog Volume (armazenamento interno da plataforma) | ❌ Nunca |
 >
-> **Por quê a separação?** O GitHub é feito para versionar **código** (arquivos de texto, pequenos). Nossos dados chegam a GBs — subir isso pro Git seria péssima prática (limite de 100MB/arquivo, deixaria o repo lento e pesado) e não traria benefício algum, já que o Delta Lake tem seu próprio versionamento interno. Por isso: código no GitHub, dados no DBFS. São dois "HDs" diferentes que o mesmo notebook acessa.
+> **Por quê a separação?** O GitHub é feito para versionar **código** (arquivos de texto, pequenos). Nossos dados chegam a GBs — subir isso pro Git seria péssima prática (limite de 100MB/arquivo, deixaria o repo lento e pesado) e não traria benefício algum, já que o Delta Lake tem seu próprio versionamento interno. Por isso: código no GitHub, dados no Volume. São dois "HDs" diferentes que o mesmo notebook acessa.
 
 ### 1️⃣ Estrutura de Código (GitHub ↔ Databricks Repos)
 
@@ -290,14 +290,18 @@ nyc-taxi-databricks-analytics/          (GitHub e Databricks Repos — mesma coi
     └── test_ml.py
 ```
 
-> 📌 Repare que `config/paths.yaml` guarda apenas o **caminho** (texto) de onde os dados ficam no DBFS — ex: `"/mnt/data/raw/delta/taxi_2016-01"`. Isso sim pode ir pro GitHub, porque é só uma referência, não o dado em si.
+> 📌 Repare que `config/paths.yaml` guarda apenas o **caminho** (texto) de onde os dados ficam no Volume — ex: `"/Volumes/workspace/default/nyc_taxi/raw/delta/taxi_2016-01"`. Isso sim pode ir pro GitHub, porque é só uma referência, não o dado em si.
 
-### 2️⃣ Estrutura de Dados (Databricks DBFS — não sincroniza com GitHub)
+### 2️⃣ Estrutura de Dados (Unity Catalog Volume — não sincroniza com GitHub)
 
-Essa estrutura **não existe no GitHub**. Ela é criada **pelos próprios notebooks**, quando você os executa (via `dbutils.fs.mkdirs()`, `df.write.format("delta").save(...)`, etc). É o "armazém" de dados que o código, versionado no GitHub, lê e escreve durante a execução.
+> ⚠️ **Atualização:** o DBFS tradicional (`/mnt/...`) vem **desativado por padrão** no Databricks Free Edition (`"Public DBFS root is disabled"`). O armazenamento de dados agora usa **Unity Catalog Volumes**, o padrão atual da plataforma. A lógica é a mesma — só muda o prefixo do caminho.
+
+Essa estrutura **não existe no GitHub**. Ela é criada **pelos próprios notebooks**, quando você os executa (via `spark.sql("CREATE VOLUME ...")`, `dbutils.fs.mkdirs()`, `df.write.format("delta").save(...)`, etc). É o "armazém" de dados que o código, versionado no GitHub, lê e escreve durante a execução.
+
+Criamos um Volume chamado `nyc_taxi`, dentro do catálogo `workspace` e schema `default` (ambos padrão do Free Edition):
 
 ```
-/mnt/data/                              (Só existe dentro do Databricks — NUNCA no GitHub)
+/Volumes/workspace/default/nyc_taxi/    (Só existe dentro do Databricks — NUNCA no GitHub)
 ├── raw/
 │   ├── csv/                            # CSVs temporários (upload manual)
 │   │   ├── yellow_tripdata_2015-01.csv (deletado após fase 1)
@@ -332,19 +336,21 @@ Essa estrutura **não existe no GitHub**. Ela é criada **pelos próprios notebo
     └── experiments/                    # Tracking MLflow
 ```
 
+**Como visualizar essa estrutura na interface:** menu lateral → **Catalog** → catálogo `workspace` → schema `default` → **Volumes** → `nyc_taxi`. As pastas aparecem navegáveis ali, como um explorador de arquivos.
+
 ### 🔗 Como as Duas Estruturas se Relacionam
 
 ```
-GitHub / Databricks Repos                    DBFS (Databricks)
-────────────────────────                    ──────────────────
+GitHub / Databricks Repos                    Unity Catalog Volume (Databricks)
+────────────────────────                    ──────────────────────────────────
 notebooks/02_ingestao.py   ──── contém ────▶  código que LÊ
-  (só código, poucos KB)                       "/mnt/data/raw/csv/..."
+  (só código, poucos KB)                       "/Volumes/workspace/default/nyc_taxi/raw/csv/..."
                                                 e ESCREVE em
-                                                "/mnt/data/raw/delta/..."
+                                                "/Volumes/workspace/default/nyc_taxi/raw/delta/..."
                                                 (dados, GBs — fica só aqui)
 ```
 
-O notebook (código) **fica no GitHub**. Quando ele **executa** dentro do Databricks, ele lê e grava arquivos no DBFS — mas essas GBs de dados nunca "sobem" para o GitHub, só o texto do código que as manipula.
+O notebook (código) **fica no GitHub**. Quando ele **executa** dentro do Databricks, ele lê e grava arquivos no Volume — mas essas GBs de dados nunca "sobem" para o GitHub, só o texto do código que as manipula.
 
 ---
 
@@ -577,15 +583,16 @@ Gradient Boosting ✓     $2.05   $1.38   0.93
 > ✅ **Este projeto roda 100% no Databricks.** Não é necessário instalar Python, PySpark, Git, IDE ou configurar ambiente virtual localmente. Tudo — código, testes, execução e versionamento — acontece dentro da plataforma.
 
 ### Conta Databricks
-- ✅ **Free Tier** (comunidade)
-- ✅ Sem custos adicionais
+- ✅ **Free Edition** (substituiu o antigo "Community Edition", aposentado em jan/2026)
+- ✅ Sem custos adicionais, sem necessidade de cartão de crédito
+- ✅ Compute Serverless já incluso (sem precisar configurar cluster)
 - ⚠️ Limitações:
-  - ~5-10GB storage
-  - Cluster compartilhado
-  - SQL Warehouse limitado
+  - Cotas de uso (compute pausa ao atingir limite diário/mensal, e reseta depois — não gera cobrança)
+  - Armazenamento via Unity Catalog Volumes (não DBFS tradicional)
+  - Acesso à internet restrito a domínios confiáveis
   - Sem suporte prioritário
 
-**Como criar:** https://databricks.com/product/pricing
+**Como criar:** https://www.databricks.com/signup/free-edition
 
 ### GitHub
 - ✅ Conta pública (gratuita)
@@ -639,21 +646,20 @@ Gradient Boosting ✓     $2.05   $1.38   0.93
 ### Passo 2: Conectar GitHub ao Databricks (via navegador)
 
 ```
-2.1 Acesse Databricks Community Edition
-    → https://community.cloud.databricks.com
+2.1 Acesse o Databricks Free Edition
+    → https://www.databricks.com/signup/free-edition
+    (crie a conta se ainda não tiver — não pede cartão de crédito)
 
-2.2 Crie um novo Workspace (ou use existente)
+2.2 Faça login no seu workspace
+    (confirme no canto superior esquerdo: deve aparecer "Free Edition")
 
 2.3 Workspace → Repos → Add Repo
     Repository URL: https://github.com/seu-usuario/nyc-taxi-databricks-analytics
-    Branch: main
-    Repo name: nyc-taxi-databricks-analytics
+    Git provider: GitHub
+    Repository name: nyc-taxi-databricks-analytics
 
-2.4 Crie um Cluster (se não tiver)
-    → Compute → Create Cluster
-    → Databricks Runtime: 12.2 LTS ou superior
-    → Worker Type: padrão do free tier
-    → Auto-terminate: 30 min
+2.4 Compute: o Free Edition já vem com Serverless Compute
+    pronto por padrão — não é necessário criar/configurar cluster
 
 2.5 Abra Workspace → Repos → seu-repo
     A estrutura do GitHub aparece sincronizada automaticamente
@@ -666,14 +672,20 @@ Gradient Boosting ✓     $2.05   $1.38   0.93
     já foi criada no Passo 1 (GitHub) e chega pronta no Databricks
     assim que você conecta o Repo — não precisa recriá-la.
 
-3.2 A estrutura de DADOS (/mnt/data/...) é diferente: ela não vem
-    do GitHub. Ela é criada pelo próprio notebook 01_setup.py,
-    rodando comandos como dbutils.fs.mkdirs("/mnt/data/raw/csv")
+3.2 A estrutura de DADOS usa um Unity Catalog Volume, não o
+    DBFS tradicional (que vem desativado por padrão no Free
+    Edition). Ela é criada pelo próprio notebook 01_setup.py,
+    rodando:
+    - spark.sql("CREATE VOLUME IF NOT EXISTS workspace.default.nyc_taxi")
+    - dbutils.fs.mkdirs("/Volumes/workspace/default/nyc_taxi/raw/csv")
     direto no Databricks.
 
 3.3 Resumindo: você não cria pastas de dados manualmente — 
     o código (que está no GitHub) faz isso automaticamente 
     na primeira execução.
+
+3.4 Para visualizar as pastas criadas: menu lateral → Catalog 
+    → workspace → default → Volumes → nyc_taxi
 ```
 
 ### Passo 4: Download dos Dados do Kaggle (único passo fora do Databricks)
@@ -915,7 +927,7 @@ Sugestões e issues são bem-vindas! (em versões públicas)
 ### Problema: "Storage limit exceeded"
 ```
 Solução:
-1. Verifique espaço usado: dbutils.fs.du("/mnt/data")
+1. Verifique espaço usado: dbutils.fs.ls("/Volumes/workspace/default/nyc_taxi")
 2. Delete tabelas intermediárias não usadas
 3. Comprima com VACUUM se usar Delta
 ```
@@ -1019,7 +1031,7 @@ Após completar este projeto, você será capaz de:
 
 ### Comunidades
 
-- [Databricks Community Edition Slack](https://databricks.com/slack)
+- [Databricks Community (fórum)](https://community.databricks.com)
 - [Stack Overflow - databricks](https://stackoverflow.com/questions/tagged/databricks)
 - [Reddit r/databricks](https://reddit.com/r/databricks)
 
@@ -1088,7 +1100,7 @@ Com obrigação de:
 ## 📞 Quick Links
 
 - 🌐 [GitHub](https://github.com/seu-usuario/nyc-taxi-databricks-analytics)
-- 🔗 [Databricks](https://community.cloud.databricks.com)
+- 🔗 [Databricks Free Edition](https://www.databricks.com/signup/free-edition)
 - 📊 [Dataset](https://www.kaggle.com/datasets/elemento/nyc-yellow-taxi-trip-data)
 - 📚 [Docs](./docs)
 
