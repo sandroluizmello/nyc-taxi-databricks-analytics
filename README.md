@@ -37,6 +37,8 @@ Este projeto implementa um **pipeline end-to-end** de dados em Databricks (Free 
 
 **Duração esperada:** 6-8 semanas (1-2h/dia)
 
+> 💡 **Estratégia de execução:** Este projeto é desenvolvido **100% dentro do Databricks** — código, testes, execução e commits (via Databricks Repos). Não é necessário instalar Python, PySpark, Git ou qualquer ferramenta localmente. O único passo fora do Databricks é baixar os CSVs originais do Kaggle para depois fazer upload na plataforma. Veja detalhes em [Requisitos](#requisitos).
+
 ---
 
 ## 🎓 Objetivos
@@ -172,11 +174,24 @@ Criar um sistema de **previsão de tarifas de taxi** (Fare Amount) em NYC com mo
 | Aspecto | Detalhes |
 |--------|----------|
 | **Fonte** | [Kaggle - NYC Yellow Taxi Trip Data](https://www.kaggle.com/datasets/elemento/nyc-yellow-taxi-trip-data) |
-| **Período** | Janeiro - Abril 2016 |
+| **Período** | Jan/2015 + Jan-Mar/2016 (4 arquivos, não consecutivos) |
 | **Volume** | ~680 milhões de registros |
 | **Tamanho Original** | 7.5GB (4 arquivos CSV) |
 | **Tamanho Processado** | ~1.5GB (Delta Lake comprimido) |
 | **Compressão** | 80% de redução |
+
+### Arquivos do Dataset
+
+O dataset no Kaggle disponibiliza **4 arquivos CSV**, cobrindo um mês de 2015 e três meses de 2016 (não são 4 meses consecutivos):
+
+```
+yellow_tripdata_2015-01.csv   (Janeiro/2015)
+yellow_tripdata_2016-01.csv   (Janeiro/2016)
+yellow_tripdata_2016-02.csv   (Fevereiro/2016)
+yellow_tripdata_2016-03.csv   (Março/2016)
+```
+
+> ⚠️ **Atenção:** por misturar um mês de 2015 com três meses de 2016, análises temporais que comparam "mês a mês" (ex: tendência jan→fev→mar) devem considerar apenas os 3 arquivos de 2016 como sequência contínua. O arquivo de 2015 entra como um período isolado, útil para comparações ano a ano (2015 vs 2016), mas não para tendência sequencial.
 
 ### Colunas Principais
 
@@ -215,80 +230,92 @@ unzip nyc-yellow-taxi-trip-data.zip
 
 ## 📁 Estrutura de Pastas
 
-### No GitHub
+> ⚠️ **Importante:** este projeto tem **duas estruturas separadas, com propósitos diferentes** — não são cópias uma da outra:
+>
+> | | O que guarda | Onde vive | Vai para o GitHub? |
+> |---|---|---|---|
+> | **1. Código** | Notebooks, funções Python, documentação | GitHub ↔ Databricks Repos (sincronizados automaticamente) | ✅ Sim |
+> | **2. Dados** | CSVs, tabelas Delta Lake, modelos treinados | Databricks DBFS (armazenamento interno da plataforma) | ❌ Nunca |
+>
+> **Por quê a separação?** O GitHub é feito para versionar **código** (arquivos de texto, pequenos). Nossos dados chegam a GBs — subir isso pro Git seria péssima prática (limite de 100MB/arquivo, deixaria o repo lento e pesado) e não traria benefício algum, já que o Delta Lake tem seu próprio versionamento interno. Por isso: código no GitHub, dados no DBFS. São dois "HDs" diferentes que o mesmo notebook acessa.
+
+### 1️⃣ Estrutura de Código (GitHub ↔ Databricks Repos)
+
+Isso é **um único repositório**, espelhado nos dois lugares. Quando você conecta o GitHub ao Databricks Repos, ele **clona automaticamente** essa estrutura — você não precisa recriá-la manualmente em nenhum dos dois lados.
 
 ```
-nyc-taxi-databricks-analytics/
+nyc-taxi-databricks-analytics/          (GitHub e Databricks Repos — mesma coisa)
 ├── .gitignore                          # Arquivos ignorados no Git
 ├── README.md                           # Este arquivo
 ├── LICENSE                             # Licença MIT
 ├── requirements.txt                    # Dependências Python
 │
 ├── docs/                               # Documentação do projeto
-│   ├── ARCHITECTURE.md                 # Diagrama e explicação
-│   ├── SETUP_GUIDE.md                  # Guia de setup
-│   ├── DATA_DICTIONARY.md              # Dicionário de features
-│   ├── PHASES_OVERVIEW.md              # Visão geral das 7 fases
-│   ├── PHASE_1_INGESTAO.md             # Fase 1: Detalhes
-│   ├── PHASE_2_EDA.md                  # Fase 2: Detalhes
-│   ├── PHASE_3_TRANSFORM.md            # Fase 3: Detalhes
-│   ├── PHASE_4_INSIGHTS.md             # Fase 4: Detalhes
-│   ├── PHASE_5_ML_MODELS.md            # Fase 5: Detalhes
-│   ├── GITHUB_WORKFLOW.md              # Como usar Git
-│   └── TROUBLESHOOTING.md              # Problemas comuns
+│   ├── ARCHITECTURE.md
+│   ├── SETUP_GUIDE.md
+│   ├── DATA_DICTIONARY.md
+│   ├── PHASES_OVERVIEW.md
+│   ├── PHASE_1_INGESTAO.md
+│   ├── PHASE_2_EDA.md
+│   ├── PHASE_3_TRANSFORM.md
+│   ├── PHASE_4_INSIGHTS.md
+│   ├── PHASE_5_ML_MODELS.md
+│   ├── GITHUB_WORKFLOW.md
+│   └── TROUBLESHOOTING.md
 │
 ├── notebooks/                          # Notebooks Databricks
-│   ├── 01_setup.py                     # Validação ambiente
-│   ├── 02_ingestao.py                  # CSV → Delta Lake
-│   ├── 03_eda.py                       # Exploração de dados
-│   ├── 04_transform.py                 # Feature engineering
-│   ├── 05_analise.py                   # Análises e vizs
-│   ├── 06_ml.py                        # Models + MLflow
-│   └── 07_deploy.py                    # Automação
+│   ├── 01_setup.py
+│   ├── 02_ingestao.py
+│   ├── 03_eda.py
+│   ├── 04_transform.py
+│   ├── 05_analise.py
+│   ├── 06_ml.py
+│   └── 07_deploy.py
 │
-├── src/                                # Código modular
+├── src/                                # Código modular (funções reutilizáveis)
 │   ├── __init__.py
-│   ├── config.py                       # Configurações
-│   ├── data_ingestion.py               # Funções I/O
-│   ├── transformations.py              # Feature eng.
-│   ├── ml_utils.py                     # Utilitários ML
-│   └── monitoring.py                   # Monitoramento
+│   ├── config.py
+│   ├── data_ingestion.py
+│   ├── transformations.py
+│   ├── ml_utils.py
+│   └── monitoring.py
 │
-├── config/                             # Arquivos config
-│   ├── paths.yaml                      # Paths DBFS
-│   ├── features.yaml                   # Lista de features
-│   └── ml_config.yaml                  # Params ML
+├── config/                             # Arquivos config (apenas texto/YAML)
+│   ├── paths.yaml                      # Guarda os CAMINHOS do DBFS como texto
+│   ├── features.yaml
+│   └── ml_config.yaml
 │
-├── tests/                              # Testes (opcional)
-│   ├── test_transformations.py
-│   └── test_ml.py
-│
-└── data/                               # Data local (gitignored)
-    └── sample_data.csv                 # Amostra para testes
+└── tests/                              # Testes (rodados no Databricks)
+    ├── test_transformations.py
+    └── test_ml.py
 ```
 
-### No Databricks (DBFS)
+> 📌 Repare que `config/paths.yaml` guarda apenas o **caminho** (texto) de onde os dados ficam no DBFS — ex: `"/mnt/data/raw/delta/taxi_2016-01"`. Isso sim pode ir pro GitHub, porque é só uma referência, não o dado em si.
+
+### 2️⃣ Estrutura de Dados (Databricks DBFS — não sincroniza com GitHub)
+
+Essa estrutura **não existe no GitHub**. Ela é criada **pelos próprios notebooks**, quando você os executa (via `dbutils.fs.mkdirs()`, `df.write.format("delta").save(...)`, etc). É o "armazém" de dados que o código, versionado no GitHub, lê e escreve durante a execução.
 
 ```
-/mnt/data/
+/mnt/data/                              (Só existe dentro do Databricks — NUNCA no GitHub)
 ├── raw/
-│   ├── csv/                            # CSVs temporários
+│   ├── csv/                            # CSVs temporários (upload manual)
+│   │   ├── yellow_tripdata_2015-01.csv (deletado após fase 1)
 │   │   ├── yellow_tripdata_2016-01.csv (deletado após fase 1)
 │   │   ├── yellow_tripdata_2016-02.csv (deletado após fase 1)
-│   │   ├── yellow_tripdata_2016-03.csv (deletado após fase 1)
-│   │   └── yellow_tripdata_2016-04.csv (deletado após fase 1)
+│   │   └── yellow_tripdata_2016-03.csv (deletado após fase 1)
 │   └── delta/                          # Delta Lake raw
+│       ├── taxi_2015-01/
 │       ├── taxi_2016-01/
 │       ├── taxi_2016-02/
-│       ├── taxi_2016-03/
-│       └── taxi_2016-04/
+│       └── taxi_2016-03/
 │
 ├── processed/
 │   ├── cleaned/                        # Dados limpos
 │   ├── featured/                       # Com features
 │   │   └── taxi_featured/
-│   └── combined/                       # 4 meses combinados
-│       └── taxi_combined_4months/
+│   └── combined/                       # Os 4 arquivos combinados
+│       └── taxi_combined_all/
 │
 ├── analytics/
 │   └── aggregations/                   # Agregações para dashboard
@@ -304,6 +331,20 @@ nyc-taxi-databricks-analytics/
     ├── predictions/                    # Previsões em batch
     └── experiments/                    # Tracking MLflow
 ```
+
+### 🔗 Como as Duas Estruturas se Relacionam
+
+```
+GitHub / Databricks Repos                    DBFS (Databricks)
+────────────────────────                    ──────────────────
+notebooks/02_ingestao.py   ──── contém ────▶  código que LÊ
+  (só código, poucos KB)                       "/mnt/data/raw/csv/..."
+                                                e ESCREVE em
+                                                "/mnt/data/raw/delta/..."
+                                                (dados, GBs — fica só aqui)
+```
+
+O notebook (código) **fica no GitHub**. Quando ele **executa** dentro do Databricks, ele lê e grava arquivos no DBFS — mas essas GBs de dados nunca "sobem" para o GitHub, só o texto do código que as manipula.
 
 ---
 
@@ -329,13 +370,13 @@ nyc-taxi-databricks-analytics/
 **Objetivo:** Preparar ambiente Databricks, GitHub e estrutura inicial
 
 **Tarefas:**
-- [x] Criar repositório GitHub
-- [x] Estruturar pastas localmente
-- [x] Conectar GitHub ao Databricks Repos
-- [x] Criar estrutura DBFS
-- [x] Avaliar ambiente Databricks
-- [x] Setup MLflow experiment
-- [x] Documentação inicial
+- [ ] Criar repositório GitHub (via navegador)
+- [ ] Conectar GitHub ao Databricks Repos
+- [ ] Estruturar pastas do projeto (direto no Databricks Repos)
+- [ ] Criar estrutura DBFS
+- [ ] Avaliar ambiente Databricks
+- [ ] Setup MLflow experiment
+- [ ] Documentação inicial
 
 **Output:** Ambiente pronto, GitHub sincronizado, MLflow funcionando
 
@@ -412,12 +453,12 @@ Tempo total:        20-40 min
 - [ ] Imputação de valores nulos
 - [ ] Remoção de outliers (IQR)
 - [ ] Salvar dados transformados em Delta
-- [ ] Combinar 4 meses em tabela única
+- [ ] Combinar os 4 arquivos em tabela única
 - [ ] Criar Delta Lake (opcional, versioning)
 - [ ] Criar módulo src/transformations.py
 - [ ] Documentar dicionário de features
 
-**Output:** 40+ features, 630M registros limpos, tabela única 4 meses
+**Output:** 40+ features, 630M registros limpos, tabela única com os 4 arquivos
 
 **Arquivo:** `notebooks/04_transform.py`
 
@@ -436,7 +477,7 @@ Velocidade:     trip_duration_minutes, speed_kmh, speed_category
 **Objetivo:** Gerar insights executivos e dashboard interativo
 
 **Tarefas:**
-- [ ] Análises por período (jan vs abr)
+- [ ] Análises por período (2015 vs 2016, e Jan→Mar/2016)
 - [ ] Padrões horários e diários
 - [ ] Análise de top rotas
 - [ ] Análise de gorjeta por segmento
@@ -533,6 +574,8 @@ Gradient Boosting ✓     $2.05   $1.38   0.93
 
 ## 💾 Requisitos
 
+> ✅ **Este projeto roda 100% no Databricks.** Não é necessário instalar Python, PySpark, Git, IDE ou configurar ambiente virtual localmente. Tudo — código, testes, execução e versionamento — acontece dentro da plataforma.
+
 ### Conta Databricks
 - ✅ **Free Tier** (comunidade)
 - ✅ Sem custos adicionais
@@ -547,46 +590,53 @@ Gradient Boosting ✓     $2.05   $1.38   0.93
 ### GitHub
 - ✅ Conta pública (gratuita)
 - ✅ Repositório público (seu portfólio)
+- ✅ Usado apenas via **Databricks Repos** (sem Git local necessário)
 
 **Como criar:** https://github.com/signup
 
-### Ambiente Local
-- ✅ Python 3.8+ instalado
-- ✅ Git instalado
-- ✅ ~8GB espaço em disco (para download dos dados)
+### No seu computador (mínimo necessário)
+- ✅ Navegador web (Chrome, Firefox, Edge, etc)
+- ✅ ~8GB de espaço em disco (apenas para baixar os CSVs do Kaggle temporariamente, antes do upload no Databricks)
 - ✅ Conexão internet estável
+
+**Não precisa:**
+- ❌ Python instalado
+- ❌ PySpark instalado
+- ❌ Git instalado
+- ❌ IDE (VSCode, PyCharm, etc)
+- ❌ Ambiente virtual (venv, conda)
+- ❌ Jupyter Notebook local
 
 ### Conhecimentos Prévios
 - ⚠️ **Python básico** (loops, funções, classes)
 - ⚠️ **SQL básico** (SELECT, WHERE, GROUP BY)
-- ⚠️ **Noções de Git** (clone, commit, push)
+- ⚠️ **Noções de Git** (conceitos de commit/push — usados via interface do Databricks)
 - ⚠️ **Conceitos de ML** (train/test, RMSE, R²)
 
 ---
 
 ## 🚀 Setup Inicial
 
-### Passo 1: Preparar Repositório GitHub
+> Todos os passos abaixo são feitos via **navegador**, na interface do GitHub e do Databricks — sem terminal local, sem instalação.
 
-```bash
-# 1.1 Clone este repo (ou crie um novo)
-git clone https://github.com/seu-usuario/nyc-taxi-databricks-analytics.git
-cd nyc-taxi-databricks-analytics
+### Passo 1: Criar Repositório no GitHub (via navegador)
 
-# 1.2 Crie estrutura de pastas
-mkdir -p notebooks src config docs tests data
-touch notebooks/.gitkeep src/__init__.py config/.gitkeep
+```
+1.1 Acesse https://github.com/new
 
-# 1.3 Copie este README
-# (já deve estar aqui)
+1.2 Preencha:
+    Nome: nyc-taxi-databricks-analytics
+    Descrição: (ver seção de descrição do projeto)
+    Visibilidade: Público (para portfólio)
+    Inicializar com: README, .gitignore (Python), LICENSE (MIT)
 
-# 1.4 Commit inicial
-git add .
-git commit -m "Initial project structure"
-git push origin main
+1.3 Clique em "Create repository"
+
+1.4 Faça upload deste README.md
+    → Add file → Upload files → arraste o README.md → Commit
 ```
 
-### Passo 2: Preparar Databricks
+### Passo 2: Conectar GitHub ao Databricks (via navegador)
 
 ```
 2.1 Acesse Databricks Community Edition
@@ -594,41 +644,62 @@ git push origin main
 
 2.2 Crie um novo Workspace (ou use existente)
 
-2.3 Workspace → Repos → Create Repo
+2.3 Workspace → Repos → Add Repo
     Repository URL: https://github.com/seu-usuario/nyc-taxi-databricks-analytics
     Branch: main
     Repo name: nyc-taxi-databricks-analytics
 
 2.4 Crie um Cluster (se não tiver)
-    → Workspace → Create → Cluster
+    → Compute → Create Cluster
     → Databricks Runtime: 12.2 LTS ou superior
-    → Worker Type: i3.xlarge (1 worker)
+    → Worker Type: padrão do free tier
     → Auto-terminate: 30 min
 
 2.5 Abra Workspace → Repos → seu-repo
-    Abrirá a estrutura GitHub sincronizada
+    A estrutura do GitHub aparece sincronizada automaticamente
 ```
 
-### Passo 3: Download dos Dados
+### Passo 3: Estrutura de Pastas — Código (já vem do GitHub) e Dados (criada via código)
 
-```bash
-# 3.1 Baixe do Kaggle (manual)
-# https://www.kaggle.com/datasets/elemento/nyc-yellow-taxi-trip-data
+```
+3.1 A estrutura de CÓDIGO (notebooks/, src/, docs/, config/) 
+    já foi criada no Passo 1 (GitHub) e chega pronta no Databricks
+    assim que você conecta o Repo — não precisa recriá-la.
 
-# 3.2 Ou use Kaggle CLI
-pip install kaggle
-kaggle datasets download -d elemento/nyc-yellow-taxi-trip-data
+3.2 A estrutura de DADOS (/mnt/data/...) é diferente: ela não vem
+    do GitHub. Ela é criada pelo próprio notebook 01_setup.py,
+    rodando comandos como dbutils.fs.mkdirs("/mnt/data/raw/csv")
+    direto no Databricks.
 
-# 3.3 Extraia
-unzip nyc-yellow-taxi-trip-data.zip
-
-# 3.4 Você terá 4 arquivos CSV (~7.5GB total)
-ls -lh yellow_tripdata_2016-*.csv
+3.3 Resumindo: você não cria pastas de dados manualmente — 
+    o código (que está no GitHub) faz isso automaticamente 
+    na primeira execução.
 ```
 
-### Passo 4: Validar Ambiente
+### Passo 4: Download dos Dados do Kaggle (único passo fora do Databricks)
 
-No Databricks, crie um notebook de teste:
+```
+4.1 Acesse no navegador:
+    https://www.kaggle.com/datasets/elemento/nyc-yellow-taxi-trip-data
+
+4.2 Baixe os 4 arquivos CSV (~7.5GB total):
+    - yellow_tripdata_2015-01.csv
+    - yellow_tripdata_2016-01.csv
+    - yellow_tripdata_2016-02.csv
+    - yellow_tripdata_2016-03.csv
+    (ficam temporariamente no seu computador)
+
+4.3 Depois, faça upload direto no Databricks:
+    Workspace → Data → Add data → Upload File
+    (ou via notebook, com dbutils.fs)
+
+4.4 Após o upload e conversão para Delta Lake (Fase 1),
+    os CSVs podem ser deletados do DBFS e do seu computador
+```
+
+### Passo 5: Validar Ambiente
+
+Dentro de um notebook no Databricks, rode um teste rápido:
 
 ```python
 # Teste 1: Spark
@@ -775,25 +846,27 @@ Fase  Status      Saída
 
 ## 🔄 Workflow de Desenvolvimento
 
+> Todo o workflow abaixo acontece **dentro da interface do Databricks** — o botão "Git" no notebook substitui os comandos de terminal.
+
 ### Dia a Dia
 
 ```
-1. Puxe mudanças do GitHub
-   git pull origin main
+1. Sincronize com o GitHub
+   Databricks Repos → botão "Pull" (canto superior)
 
-2. Abra notebook no Databricks
-   Workspace → Repos → notebook.py
+2. Abra o notebook
+   Workspace → Repos → seu-repo → notebook.py
 
 3. Faça alterações
-   (Databricks auto-save a cada linha)
+   (Databricks auto-save a cada execução de célula)
 
 4. Teste e valide outputs
+   (Rode as células direto no cluster)
 
-5. Commit no GitHub
-   (Via Databricks Repos ou terminal)
-   
-6. Push para GitHub
-   git push origin main
+5. Commit e push para o GitHub
+   Databricks Repos → botão "Git" → escreva a mensagem 
+   → Commit & Push
+   (sincroniza direto com o GitHub, sem terminal)
 ```
 
 ### Branches
@@ -826,11 +899,11 @@ test: adicionar testes de transformação
 ## 🤝 Contribuições
 
 ### Para Seu Próprio Projeto
-- Fork este repositório (clone)
-- Crie branch (`git checkout -b feature/melhoria`)
-- Commit mudanças (`git commit -m 'feat: add improvement'`)
-- Push para branch (`git push origin feature/melhoria`)
-- Open Pull Request (ou simplesmente em seu repo)
+- Fork este repositório (via GitHub, no navegador)
+- No Databricks Repos, crie uma branch (botão de branch no topo do Repo)
+- Faça alterações nos notebooks e commit via botão "Git"
+- Push da branch para o GitHub (mesma interface)
+- Abra um Pull Request no GitHub quando quiser mesclar
 
 ### Para Melhorar Este Template
 Sugestões e issues são bem-vindas! (em versões públicas)
@@ -863,14 +936,14 @@ Solução:
 3. Check Model Registry para versão
 ```
 
-### Problema: "Git merge conflicts"
+### Problema: "Git merge conflicts" (na sincronização do Databricks Repos)
 ```
 Solução:
-1. git pull origin main
-2. Resolva conflitos manualmente
-3. git add .
-4. git commit -m "merge: resolve conflicts"
-5. git push origin main
+1. No Databricks Repos, clique em "Pull" para trazer mudanças
+2. Se houver conflito, o Databricks sinaliza o arquivo afetado
+3. Abra o arquivo e resolva manualmente as diferenças
+4. Clique em "Git" → escreva a mensagem de commit
+5. Commit & Push para sincronizar com o GitHub
 ```
 
 Mais soluções em: [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)
