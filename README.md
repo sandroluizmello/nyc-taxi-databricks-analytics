@@ -24,7 +24,7 @@
 
 Este projeto implementa um **pipeline end-to-end** de dados em Databricks (Free Tier) que demonstra as melhores práticas para:
 
-✅ Ingestão de dados em larga escala (7.5GB → 1.5GB)
+✅ Ingestão de dados em larga escala (7,39GB CSV → 1,06GB Delta Lake, ~86% de compressão)
 ✅ Processamento distribuído com PySpark
 ✅ Armazenamento otimizado com Delta Lake
 ✅ Engenharia de features de qualidade
@@ -44,7 +44,7 @@ Este projeto implementa um **pipeline end-to-end** de dados em Databricks (Free 
 ## 🎓 Objetivos
 
 ### Objetivo Principal
-Criar um sistema de **previsão de tarifas de taxi** (Fare Amount) em NYC com modelo de ML treinado em 680 milhões de registros reais.
+Criar um sistema de **previsão de tarifas de taxi** (Fare Amount) em NYC com modelo de ML treinado em ~46,9 milhões de registros reais.
 
 ### Objetivos Secundários
 - ✅ Entender fluxo completo de dados em Databricks
@@ -175,10 +175,10 @@ Criar um sistema de **previsão de tarifas de taxi** (Fare Amount) em NYC com mo
 |--------|----------|
 | **Fonte** | [Kaggle - NYC Yellow Taxi Trip Data](https://www.kaggle.com/datasets/elemento/nyc-yellow-taxi-trip-data) |
 | **Período** | Jan/2015 + Jan-Mar/2016 (4 arquivos, não consecutivos) |
-| **Volume** | ~680 milhões de registros |
-| **Tamanho Original** | 7.5GB (4 arquivos CSV) |
-| **Tamanho Processado** | ~1.5GB (Delta Lake comprimido) |
-| **Compressão** | 80% de redução |
+| **Volume** | ~46,9 milhões de registros (confirmado após ingestão) |
+| **Tamanho Original** | 7,39GB (4 arquivos CSV — confirmado) |
+| **Tamanho Processado** | 1,06GB (Delta Lake comprimido — confirmado) |
+| **Compressão** | ~86% de redução (confirmado) |
 
 ### Arquivos do Dataset
 
@@ -361,8 +361,8 @@ O notebook (código) **fica no GitHub**. Quando ele **executa** dentro do Databr
 | # | Fase | Duração | Tarefas | Status |
 |---|------|---------|--------|--------|
 | 0 | **Setup & Preparação** | 2-3h | 7 | ✅ Concluído |
-| 1 | **Ingestão & Delta Lake** | 2-4h | 9 | 🔵 Em andamento |
-| 2 | **Análise Exploratória (EDA)** | 6-8h | 10 | ⬜ Não iniciado |
+| 1 | **Ingestão & Delta Lake** | 2-4h | 9 | ✅ Concluído |
+| 2 | **Análise Exploratória (EDA)** | 6-8h | 10 | 🔵 Em andamento |
 | 3 | **Feature Engineering** | 10-14h | 12 | ⬜ Não iniciado |
 | 4 | **Análise & Visualização** | 8-10h | 10 | ⬜ Não iniciado |
 | 5 | **Machine Learning (MLflow)** | 14-18h | 12 | ⬜ Não iniciado |
@@ -390,35 +390,41 @@ O notebook (código) **fica no GitHub**. Quando ele **executa** dentro do Databr
 
 ---
 
-### 📍 Fase 1: Ingestão & Conversão para Delta Lake (2-4 horas) 🔵 Em andamento
+### 📍 Fase 1: Ingestão & Conversão para Delta Lake (2-4 horas) ✅ Concluído
 
 **Objetivo:** Upload de 4 CSVs e transformação em Delta Lake comprimido
 
 **Tarefas:**
-- [ ] Upload dos 4 CSVs para DBFS (~7.5GB)
-- [ ] Exploração rápida do schema
-- [ ] Transformação CSV → Delta (1 arquivo por vez)
-- [ ] Validação dos dados convertidos
-- [ ] Deleção dos CSVs originais (libera 7.5GB)
-- [ ] Relatório de ingestão
+- [x] Upload dos 4 CSVs para o Volume (~7,39GB reais)
+- [x] Exploração rápida do schema (20 colunas)
+- [x] Transformação CSV → Delta (limpeza mínima: `trip_distance > 0`, `fare_amount > 0`, `tpep_pickup_datetime` não nulo)
+- [x] Validação dos dados convertidos (linhas + dias distintos por partição)
+- [x] Deleção dos CSVs originais (7,39GB liberados)
+- [x] Relatório de ingestão
 
-**Output:** 4 tabelas Delta (~1.5GB), 680M registros preservados
+**Output:** 4 tabelas Delta, ~46,9M registros preservados
 
 **Arquivo:** `notebooks/02_ingestao.py`
 
-**Métricas Esperadas:**
+**Resultados Reais:**
 ```
-Linhas originais:   680.000.000
-Linhas processadas: 680.000.000 (100%)
-Tamanho CSV:        7.5GB
-Tamanho Delta:      1.5GB
-Compressão:         80%
-Tempo total:        20-40 min
+Arquivo    Linhas          CSV      Delta    Compressão
+─────────────────────────────────────────────────────
+2015-01    12.664.586      1,99 GB  0,31 GB    84%
+2016-01    10.837.487      1,71 GB  0,24 GB    86%
+2016-02    11.309.140      1,78 GB  0,25 GB    86%
+2016-03    12.134.119      1,91 GB  0,26 GB    86%
+─────────────────────────────────────────────────────
+Total      46.945.332      7,39 GB  1,06 GB    86%
 ```
+
+> 📌 **Nota:** a estimativa inicial no planejamento (680M registros) foi baseada em uma suposição incorreta sobre o tamanho médio de cada arquivo. O volume real do dataset é ~46,9M registros — ainda assim, um volume expressivo para exercitar processamento distribuído com PySpark e Delta Lake.
+
+> ⚠️ **Limitação encontrada:** no Databricks Serverless Compute, chamadas que usam a API de RDD (como `df.rdd.getNumPartitions()`) não são suportadas (`PySparkNotImplementedError: NOT_IMPLEMENTED`). A solução foi usar apenas a API de DataFrame/SQL (ex: `df.select(...).distinct().count()`), que é 100% compatível com Serverless. Essa restrição vale para todas as próximas fases.
 
 ---
 
-### 📍 Fase 2: Análise Exploratória (EDA) (6-8 horas)
+### 📍 Fase 2: Análise Exploratória (EDA) (6-8 horas) 🔵 Em andamento
 
 **Objetivo:** Entender dados através de análise exploratória detalhada
 
@@ -785,12 +791,13 @@ Fase  Status      Saída
 
 ## 📈 Resultados Esperados
 
-### Fase 1: Ingestão
+### Fase 1: Ingestão ✅ Concluído
 ```
 ✅ 4 tabelas Delta criadas
-✅ 680M registros preservados (100%)
-✅ Compressão: 7.5GB → 1.5GB (80%)
-✅ Espaço liberado: 7.5GB
+✅ 46,9M registros preservados
+✅ Tamanho original: 7,39GB (CSV) → 1,06GB (Delta)
+✅ Compressão: ~86%
+✅ Espaço liberado: 7,39GB (CSVs deletados após conversão)
 ```
 
 ### Fase 2: EDA
@@ -969,8 +976,8 @@ Mais soluções em: [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)
 | Código versionado | 100% no GitHub | ⬜ |
 | Features criadas | 40+ | ⬜ |
 | Modelo RMSE | < $2.50 | ⬜ |
-| Dados processados | 680M registros | ⬜ |
-| Compressão | 80% (7.5GB→1.5GB) | ⬜ |
+| Dados processados | 46,9M registros | ✅ |
+| Compressão CSV → Delta | 86% (7,39GB→1,06GB) | ✅ |
 | Dashboard criado | 1 interativo | ⬜ |
 | Jobs agendados | 1 diário | ⬜ |
 
