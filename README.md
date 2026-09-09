@@ -169,12 +169,24 @@ Criar um sistema de **previsão de tarifas de taxi** (Fare Amount) em NYC com mo
 
 ## 📊 Dataset
 
+### Contexto Oficial (segundo o autor do dataset no Kaggle)
+
+O dataset é mantido pela **NYC Taxi & Limousine Commission (TLC)**, que disponibiliza dados de 4 tipos de veículo (Yellow Taxi, Green Taxi, FHV, entre outros). Este projeto usa exclusivamente **Yellow Taxi**.
+
+Dois pontos importantes esclarecidos pelo autor do dataset:
+
+1. **O recorte Jan/2015 + Jan-Mar/2016 é intencional**, não uma amostra aleatória — foi escolhido deliberadamente para permitir tanto análises de **clustering espacial** quanto de **série temporal**.
+2. **Este dataset usa o formato antigo da TLC**, com coordenadas de latitude/longitude de pickup e dropoff. Versões mais recentes do site oficial da TLC substituíram essas coordenadas por **IDs de zona** (por privacidade), o que inviabilizaria os exercícios de clustering geoespacial que fazem parte do propósito do dataset. Por isso, o autor optou por manter esse formato mais antigo.
+
+> 💡 Isso explica por que temos `pickup_latitude`/`pickup_longitude` diretamente disponíveis — em datasets mais recentes da TLC, isso não existiria mais.
+
 ### Características
 
 | Aspecto | Detalhes |
 |--------|----------|
 | **Fonte** | [Kaggle - NYC Yellow Taxi Trip Data](https://www.kaggle.com/datasets/elemento/nyc-yellow-taxi-trip-data) |
-| **Período** | Jan/2015 + Jan-Mar/2016 (4 arquivos, não consecutivos) |
+| **Veículo** | Yellow Taxi (táxis amarelos icônicos de NYC, hail-only) |
+| **Período** | Jan/2015 + Jan-Mar/2016 (recorte intencional do autor, não consecutivo) |
 | **Volume** | ~46,9 milhões de registros (confirmado após ingestão) |
 | **Tamanho Original** | 7,39GB (4 arquivos CSV — confirmado) |
 | **Tamanho Processado** | 1,06GB (Delta Lake comprimido — confirmado) |
@@ -182,7 +194,7 @@ Criar um sistema de **previsão de tarifas de taxi** (Fare Amount) em NYC com mo
 
 ### Arquivos do Dataset
 
-O dataset no Kaggle disponibiliza **4 arquivos CSV**, cobrindo um mês de 2015 e três meses de 2016 (não são 4 meses consecutivos):
+O dataset no Kaggle disponibiliza **4 arquivos CSV**, cobrindo um mês de 2015 e três meses de 2016:
 
 ```
 yellow_tripdata_2015-01.csv   (Janeiro/2015)
@@ -191,27 +203,53 @@ yellow_tripdata_2016-02.csv   (Fevereiro/2016)
 yellow_tripdata_2016-03.csv   (Março/2016)
 ```
 
-> ⚠️ **Atenção:** por misturar um mês de 2015 com três meses de 2016, análises temporais que comparam "mês a mês" (ex: tendência jan→fev→mar) devem considerar apenas os 3 arquivos de 2016 como sequência contínua. O arquivo de 2015 entra como um período isolado, útil para comparações ano a ano (2015 vs 2016), mas não para tendência sequencial.
+> 💡 **Sobre análises temporais:** os 3 arquivos de 2016 (Jan, Fev, Mar) formam uma sequência contínua, boa para tendência mês a mês. O arquivo de 2015 é útil para comparação ano a ano (ex: Janeiro/2015 vs Janeiro/2016 — como fizemos na Fase 2), mas não deve ser tratado como parte de uma sequência com os meses de 2016.
 
-### Colunas Principais
+### ⚠️ Correção Importante: `trip_distance` está em MILHAS, não km
+
+O dicionário oficial de dados da NYC TLC confirma:
+
+> *"Trip_distance: The elapsed trip distance in **miles** reported by the taximeter."*
+
+Isso corrige uma suposição implícita nas análises da Fase 2 (onde tratamos os valores como km). **Os cálculos continuam corretos** — só o rótulo da unidade precisa ser ajustado. Ex: mediana de `1.70` é **1,70 milhas** (≈ 2,74 km), não 1,70 km.
+
+> 📌 Na Fase 3, vamos criar uma coluna adicional `trip_distance_km` (conversão de milhas para km) para facilitar leitura, mantendo a coluna original (`trip_distance`, em milhas) intacta.
+
+### Colunas Principais (Dicionário Oficial da NYC TLC)
 
 ```
-Coluna                    | Tipo      | Descrição
---------------------------|-----------|----------------------------------
-VendorID                  | int       | ID do vendedor
-tpep_pickup_datetime      | timestamp | Data/hora de início
-tpep_dropoff_datetime     | timestamp | Data/hora de término
-passenger_count           | int       | Número de passageiros
-trip_distance             | float     | Distância em km
-pickup_longitude          | float     | Longitude de pickup
-pickup_latitude           | float     | Latitude de pickup
-dropoff_longitude         | float     | Longitude de dropoff
-dropoff_latitude          | float     | Latitude de dropoff
-fare_amount               | float     | Tarifa em $
-tip_amount                | float     | Gorjeta em $
-total_amount              | float     | Total em $
-payment_type              | int       | Tipo de pagamento
+Coluna                  | Tipo      | Descrição
+------------------------|-----------|----------------------------------------
+VendorID                | int       | Fornecedor do TPEP: 1=Creative Mobile
+                        |           | Technologies, 2=VeriFone Inc.
+tpep_pickup_datetime     | timestamp | Data/hora em que o taxímetro foi ativado
+tpep_dropoff_datetime    | timestamp | Data/hora em que o taxímetro foi desativado
+passenger_count          | int       | Nº de passageiros (valor inserido pelo motorista)
+trip_distance            | float     | Distância percorrida em MILHAS (não km!)
+pickup_longitude         | float     | Longitude de onde o taxímetro foi ativado
+pickup_latitude          | float     | Latitude de onde o taxímetro foi ativado
+dropoff_longitude        | float     | Longitude de onde o taxímetro foi desativado
+dropoff_latitude         | float     | Latitude de onde o taxímetro foi desativado
+RatecodeID                | int       | Tarifa final: 1=Standard, 2=JFK, 3=Newark,
+                        |           | 4=Nassau/Westchester, 5=Negotiated fare
+store_and_fwd_flag       | string    | Y=corrida guardada no veículo por falta de
+                        |           | conexão antes de enviar; N=enviada em tempo real
+payment_type             | int       | 1=Cartão de crédito, 2=Dinheiro, 3=Sem cobrança,
+                        |           | 4=Disputa, 5=Desconhecido, 6=Corrida anulada
+fare_amount              | float     | Tarifa calculada pelo taxímetro (tempo+distância)
+extra                    | float     | Taxas extras (rush hour $0.50, noturna $1.00)
+mta_tax                  | float     | Taxa fixa de $0.50 (MTA)
+improvement_surcharge    | float     | Taxa fixa de $0.30 (vigente desde 2015)
+tip_amount               | float     | Gorjeta — só registra gorjetas em CARTÃO;
+                        |           | gorjetas em dinheiro NÃO aparecem aqui
+tolls_amount             | float     | Total de pedágios pagos na corrida
+total_amount             | float     | Total cobrado do passageiro — NÃO inclui
+                        |           | gorjetas em dinheiro
 ```
+
+> ⚠️ **Dois pontos de atenção para a Fase 3 e Fase 5 (ML):**
+> 1. `tip_amount` e `total_amount` só refletem gorjetas pagas em **cartão** — corridas pagas em dinheiro sempre mostram `tip_amount = 0`, o que não significa "sem gorjeta", e sim "gorjeta não registrada pelo sistema". Modelos de previsão de gorjeta devem considerar filtrar apenas `payment_type = 1` (cartão) para não aprender um padrão artificial.
+> 2. `RatecodeID` já identifica viagens de aeroporto diretamente (`2 = JFK`, `3 = Newark`) — não é necessário calcular isso via distância até coordenadas do aeroporto, como havíamos cogitado inicialmente.
 
 ### Download
 
@@ -362,8 +400,8 @@ O notebook (código) **fica no GitHub**. Quando ele **executa** dentro do Databr
 |---|------|---------|--------|--------|
 | 0 | **Setup & Preparação** | 2-3h | 7 | ✅ Concluído |
 | 1 | **Ingestão & Delta Lake** | 2-4h | 9 | ✅ Concluído |
-| 2 | **Análise Exploratória (EDA)** | 6-8h | 10 | 🔵 Em andamento |
-| 3 | **Feature Engineering** | 10-14h | 12 | ⬜ Não iniciado |
+| 2 | **Análise Exploratória (EDA)** | 6-8h | 10 | ✅ Concluído |
+| 3 | **Feature Engineering** | 10-14h | 12 | 🔵 Em andamento |
 | 4 | **Análise & Visualização** | 8-10h | 10 | ⬜ Não iniciado |
 | 5 | **Machine Learning (MLflow)** | 14-18h | 12 | ⬜ Não iniciado |
 | 6 | **Validação & Avaliação** | 2-3h | 3 | ⬜ Não iniciado |
@@ -424,35 +462,102 @@ Total      46.945.332      7,39 GB  1,06 GB    86%
 
 ---
 
-### 📍 Fase 2: Análise Exploratória (EDA) (6-8 horas) 🔵 Em andamento
+### 📍 Fase 2: Análise Exploratória (EDA) (6-8 horas) ✅ Concluído
 
 **Objetivo:** Entender dados através de análise exploratória detalhada
 
 **Tarefas:**
-- [ ] Carregar dados Delta em tabelas SQL
-- [ ] Estatísticas descritivas (mean, std, percentis)
-- [ ] Análise de valores nulos
-- [ ] Análise de duplicatas
-- [ ] Análise temporal (padrões por hora/dia/mês)
-- [ ] Análise geográfica (zonas, rotas)
-- [ ] Análise de tarifa e gorjeta
-- [ ] Análise de pagamento
-- [ ] Visualizações principais (10+)
-- [ ] Documentar insights
+- [x] Carregar dados Delta em tabela SQL combinada (46,9M linhas)
+- [x] Estatísticas descritivas (mean, std, percentis)
+- [x] Análise de valores nulos
+- [x] Análise de duplicatas
+- [x] Análise temporal (padrões por hora/dia da semana)
+- [x] Análise geográfica (top zonas de pickup)
+- [x] Análise de tarifa e gorjeta (por distância)
+- [x] Análise de pagamento
+- [x] Investigação adicional: outliers e diferença 2015 vs 2016
+- [x] Análise extra: viagens por RatecodeID (aeroportos)
+- [x] Documentar insights
 
-**Output:** Relatório EDA, 15+ insights, 10+ visualizações
+**Output:** Notebook `03_eda.py` com 14 células de análise + insights documentados
 
 **Arquivo:** `notebooks/03_eda.py`
 
-**Exemplos de Insights:**
-- "Pickups aumentam 300% durante rush hours (7-9am, 5-7pm)"
-- "Gorjeta média é 18% mas varia: 22% sexta, 12% segunda"
-- "80% das viagens saem de Manhattan"
-- "Correlação distância-tarifa: 0.85 (forte positiva)"
+**Insights Reais Descobertos:**
+
+> ✏️ **Nota de correção:** os valores abaixo foram originalmente registrados como "km" durante a análise, mas o dicionário oficial da TLC confirmou que `trip_distance` é medido em **milhas**. Os números abaixo já foram corrigidos para refletir a unidade correta (milhas).
+
+**Qualidade dos dados:**
+```
+✅ Nulos: praticamente inexistentes em todas as colunas
+✅ Duplicatas: apenas 4 em 46,9M linhas (irrelevante)
+✅ Outliers extremos: menos de 300 registros no total (0,0006%)
+   - tip_amount negativo: 3 registros
+   - total_amount negativo: 5 registros
+   - fare_amount > $500: 105 registros
+   - trip_distance > 200 milhas (~322km): 184 registros
+⚠️ RatecodeID tem 2 códigos não documentados no dicionário oficial
+   (6 e 99), com volume irrelevante: 607 registros (0,0013%)
+```
+
+**Percentis reais (após remover outliers extremos):**
+```
+Métrica          Mediana      p90        p95         p99
+trip_distance     1,70 mi     6,40 mi    10,20 mi    18,46 mi
+fare_amount       $9,00       $23,00     $33,00      $52,00
+```
+
+**Padrões temporais:**
+- Pico de viagens: 18h-19h (final de tarde)
+- Menor volume: 3h-4h da madrugada
+- Sábado tem o maior volume de viagens, mas a menor tarifa média
+
+**Descoberta — Comparação Janeiro/2015 vs Janeiro/2016:**
+- Médias de distância muito diferentes (13,55 mi vs 4,68 mi) **pareciam** indicar erro de unidade
+- Investigação com medianas revelou: **1,70 milhas em ambos os anos** — dados consistentes, a diferença nas médias era causada só pelos outliers extremos concentrados no arquivo de 2015
+
+**Correlação distância-tarifa:**
+```
+❌ Com outliers:  0,01  (parecia não haver relação)
+✅ Sem outliers:  0,95  (relação forte, como esperado)
+```
+Isso confirmou que os outliers extremos, embora raríssimos, distorciam completamente as métricas agregadas — reforçando a importância de tratá-los na Fase 3.
+
+**Gorjetas por tipo de pagamento:**
+- Cartão de crédito: 21,3% de gorjeta média
+- Dinheiro: 0% de gorjeta média (**não é erro** — gorjetas em dinheiro não passam pelo sistema da NYC TLC, então nunca são registradas)
+
+**Viagens de aeroporto (via `RatecodeID`):**
+
+| RatecodeID | Tipo | Viagens | Tarifa Média | Distância Média |
+|---|---|---|---|---|
+| 1 | Standard | 45.899.612 | $11,37 | 7,20 mi |
+| 2 | JFK | 891.844 | **$52,54** | 20,72 mi |
+| 3 | Newark | 70.036 | $66,04 | 17,04 mi |
+| 5 | Negotiated fare | 65.139 | $74,52 | 12,12 mi |
+| 4 | Nassau/Westchester | 18.094 | $64,17 | 106,36 mi ⚠️ |
+| 99 | Não documentado | 445 | $18,62 | 10,09 mi |
+| 6 | Não documentado | 162 | $9,21 | 2,62 mi |
+
+- ✅ **Validação de qualidade dos dados:** a tarifa média de $52,54 para JFK bate quase exatamente com a tarifa fixa histórica real (flat rate Manhattan↔JFK era $52) — forte evidência de que os dados são confiáveis
+- ⚠️ **Ponto a investigar na Fase 3:** a distância média de 106 milhas para Nassau/Westchester é suspeita (esperado seria ~20-30 milhas); como o grupo tem volume pequeno (18k viagens), provavelmente há outliers extremos concentrados nessa categoria
+- 💡 `RatecodeID` já identifica viagens de aeroporto diretamente — dispensa o cálculo de distância até coordenadas do aeroporto que havíamos planejado originalmente
+
+**Regras de limpeza definidas para a Fase 3:**
+```python
+REGRAS_LIMPEZA = {
+    "trip_distance_min": 0.1,
+    "trip_distance_max": 200,      # baseado no p99.9 observado
+    "fare_amount_min": 2.5,        # tarifa mínima NYC
+    "fare_amount_max": 500,        # baseado no p99.9 observado
+    "tip_amount_min": 0,           # remove os 3 registros negativos
+    "total_amount_min": 0,         # remove os 5 registros negativos
+}
+```
 
 ---
 
-### 📍 Fase 3: Feature Engineering (10-14 horas)
+### 📍 Fase 3: Feature Engineering (10-14 horas) 🔵 Em andamento
 
 **Objetivo:** Preparar dados de alta qualidade com 40+ features enriquecidas
 
@@ -470,17 +575,21 @@ Total      46.945.332      7,39 GB  1,06 GB    86%
 - [ ] Criar módulo src/transformations.py
 - [ ] Documentar dicionário de features
 
-**Output:** 40+ features, 630M registros limpos, tabela única com os 4 arquivos
+**Output:** 40+ features, ~46,9M registros (limpeza mínima esperada, dado que outliers reais são <300 registros — ver achados da Fase 2), tabela única com os 4 arquivos
 
 **Arquivo:** `notebooks/04_transform.py`
 
-**Features Criadas:**
+**Features Planejadas:**
 ```
+Conversão:      trip_distance_km (conversão de milhas para km)
 Temporais:      pickup_hour, day_of_week, is_weekend, is_rush_hour
 Localização:    lat_bucket, lng_bucket, haversine_distance
+Aeroporto:      is_airport_trip (via RatecodeID: 2=JFK, 3=Newark — não precisa calcular por coordenadas)
 Tarifa:         fare_per_km, tip_percentage, tip_category
 Velocidade:     trip_duration_minutes, speed_kmh, speed_category
 ```
+
+> 📌 Features de gorjeta (`tip_percentage`, `tip_category`) devem considerar filtrar apenas `payment_type = 1` (cartão), já que gorjetas em dinheiro não são registradas (ver correção na seção Dataset).
 
 ---
 
@@ -811,8 +920,8 @@ Fase  Status      Saída
 ### Fase 3: Transform
 ```
 ✅ 40+ features criadas
-✅ 630M registros limpos (7% outliers removido)
-✅ Valores nulos tratados (< 1% restante)
+✅ ~46,9M registros (outliers reais são <300 registros, ver Fase 2)
+✅ Valores nulos tratados (já praticamente inexistentes, ver Fase 2)
 ✅ Dados prontos para ML
 ```
 
