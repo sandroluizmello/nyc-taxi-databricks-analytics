@@ -59,7 +59,7 @@ Criar um sistema de **previsão de tarifas de taxi** (Fare Amount) em NYC com mo
 **Modelo de previsão de tarifa** com:
 - RMSE esperado: ~$2.00-2.50
 - R² esperado: ~0.90-0.95
-- 40+ features enriquecidas
+- 37 features no total (17 novas criadas na Fase 3)
 - Versionado em MLflow
 - Testado com validação temporal
 
@@ -401,7 +401,7 @@ O notebook (código) **fica no GitHub**. Quando ele **executa** dentro do Databr
 | 0 | **Setup & Preparação** | 2-3h | 7 | ✅ Concluído |
 | 1 | **Ingestão & Delta Lake** | 2-4h | 9 | ✅ Concluído |
 | 2 | **Análise Exploratória (EDA)** | 6-8h | 10 | ✅ Concluído |
-| 3 | **Feature Engineering** | 10-14h | 12 | 🔵 Em andamento |
+| 3 | **Feature Engineering** | 10-14h | 12 | ✅ Concluído |
 | 4 | **Análise & Visualização** | 8-10h | 10 | ⬜ Não iniciado |
 | 5 | **Machine Learning (MLflow)** | 14-18h | 12 | ⬜ Não iniciado |
 | 6 | **Validação & Avaliação** | 2-3h | 3 | ⬜ Não iniciado |
@@ -557,39 +557,77 @@ REGRAS_LIMPEZA = {
 
 ---
 
-### 📍 Fase 3: Feature Engineering (10-14 horas) 🔵 Em andamento
+### 📍 Fase 3: Feature Engineering (10-14 horas) ✅ Concluído
 
-**Objetivo:** Preparar dados de alta qualidade com 40+ features enriquecidas
+**Objetivo:** Preparar dados de alta qualidade com features enriquecidas, com base nas regras definidas na Fase 2
 
 **Tarefas:**
-- [ ] Definir regras de limpeza (outliers, nulos)
-- [ ] Extrair features temporais (8 novas)
-- [ ] Extrair features de localização (6 novas)
-- [ ] Extrair features de velocidade (3 novas)
-- [ ] Extrair features de tarifa (4 novas)
-- [ ] Imputação de valores nulos
-- [ ] Remoção de outliers (IQR)
-- [ ] Salvar dados transformados em Delta
-- [ ] Combinar os 4 arquivos em tabela única
-- [ ] Criar Delta Lake (opcional, versioning)
-- [ ] Criar módulo src/transformations.py
-- [ ] Documentar dicionário de features
+- [x] Definir regras de limpeza (baseadas nos percentis reais da Fase 2)
+- [x] Diagnóstico individual de cada regra de limpeza (transparência total)
+- [x] Conversão de unidade: trip_distance (milhas) → trip_distance_km
+- [x] Extrair features temporais (7 novas)
+- [x] Extrair feature de aeroporto via RatecodeID (2 novas, sem cálculo geoespacial)
+- [x] Extrair features de velocidade e duração, com flag de qualidade (4 novas)
+- [x] Extrair features de tarifa e gorjeta, respeitando payment_type (3 novas)
+- [x] Salvar dados transformados em Delta Lake (particionado por ano/mês, com mergeSchema)
+- [x] Combinar os 4 arquivos em tabela única
+- [x] Validar leitura dos dados salvos
+- [ ] Criar módulo src/transformations.py (adiado — código está no notebook por ora)
+- [x] Documentar dicionário de features (`docs/DATA_DICTIONARY.md`)
 
-**Output:** 40+ features, ~46,9M registros (limpeza mínima esperada, dado que outliers reais são <300 registros — ver achados da Fase 2), tabela única com os 4 arquivos
+**Output:** 17 features novas (37 no total), 46.882.150 registros, tabela única combinada
 
 **Arquivo:** `notebooks/04_transform.py`
 
-**Features Planejadas:**
+**Resultados Reais da Limpeza:**
 ```
-Conversão:      trip_distance_km (conversão de milhas para km)
-Temporais:      pickup_hour, day_of_week, is_weekend, is_rush_hour
-Localização:    lat_bucket, lng_bucket, haversine_distance
-Aeroporto:      is_airport_trip (via RatecodeID: 2=JFK, 3=Newark — não precisa calcular por coordenadas)
-Tarifa:         fare_per_km, tip_percentage, tip_category
-Velocidade:     trip_duration_minutes, speed_kmh, speed_category
+Linhas antes:   46.945.332
+Linhas depois:  46.882.150
+Removidas:      63.182 (0,1346%)
 ```
 
-> 📌 Features de gorjeta (`tip_percentage`, `tip_category`) devem considerar filtrar apenas `payment_type = 1` (cartão), já que gorjetas em dinheiro não são registradas (ver correção na seção Dataset).
+**Diagnóstico — contribuição de cada regra (não são mutuamente exclusivas):**
+```
+trip_distance entre 0 e 0.1mi:     53.888   ← maior contribuinte, de longe
+passenger_count inválido (0 ou >8): 6.628
+fare_amount < $2.5:                 2.600
+trip_distance > 200mi:                184
+fare_amount > $500:                   105
+total_amount < 0:                       5
+tip_amount < 0:                         3
+```
+> 💡 A soma dessas linhas passa do total removido porque um mesmo registro pode violar mais de uma regra ao mesmo tempo (contado 2x no diagnóstico, mas removido 1x na limpeza real).
+
+**Features Criadas (17 novas):**
+```
+Conversão:      trip_distance_km (milhas → km)
+Temporais:      pickup_hour, pickup_day_of_week, pickup_month, pickup_year,
+                is_weekend, is_rush_hour, time_of_day
+Aeroporto:      is_airport_trip, airport_type (via RatecodeID — sem cálculo geoespacial)
+Velocidade:     trip_duration_minutes, duracao_valida, speed_kmh, speed_category
+Tarifa:         fare_per_km, tip_percentage, tip_category
+```
+
+> 📌 `tip_percentage`/`tip_category` só são calculados para `payment_type = 1` (cartão); dinheiro recebe `tip_category = "nao_aplicavel"`, já que gorjetas em dinheiro não são registradas pelo sistema (ver seção Dataset).
+
+**Achado — Qualidade da Duração de Viagem:**
+```
+171.592 viagens (0,37%) sinalizadas como speed_category = "duracao_invalida"
+(duração fora da faixa de 1 a 300 minutos)
+```
+Essas linhas **não foram removidas** — só a velocidade calculada é marcada como não confiável (`speed_kmh = NULL`), preservando tarifa, distância e demais dados válidos da viagem.
+
+**Achado — Distribuição de Gorjetas:**
+```
+alta (≥20%):        22.466.554  (48% de todas as viagens)
+media (10-20%):      5.777.578
+baixa (<10%):        1.429.213
+sem_gorjeta:         1.078.562
+nao_aplicavel (dinheiro): 16.130.243
+```
+A concentração em "alta" reflete os botões de gorjeta pré-definidos (20%/25%/30%) nas máquinas de cartão dos táxis de NY.
+
+**Dados salvos em:** `/Volumes/workspace/default/nyc_taxi/processed/featured/taxi_featured` (Delta Lake, particionado por `pickup_year`, `pickup_month`)
 
 ---
 
@@ -917,11 +955,11 @@ Fase  Status      Saída
 ✅ Qualidade de dados validada
 ```
 
-### Fase 3: Transform
+### Fase 3: Transform ✅ Concluído
 ```
-✅ 40+ features criadas
-✅ ~46,9M registros (outliers reais são <300 registros, ver Fase 2)
-✅ Valores nulos tratados (já praticamente inexistentes, ver Fase 2)
+✅ 17 features novas criadas (37 no total)
+✅ 46.882.150 registros (63.182 removidos, 0,13%)
+✅ Duração de viagem inválida sinalizada, não descartada (171.592 registros)
 ✅ Dados prontos para ML
 ```
 
