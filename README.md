@@ -402,7 +402,7 @@ O notebook (código) **fica no GitHub**. Quando ele **executa** dentro do Databr
 | 1 | **Ingestão & Delta Lake** | 2-4h | 9 | ✅ Concluído |
 | 2 | **Análise Exploratória (EDA)** | 6-8h | 10 | ✅ Concluído |
 | 3 | **Feature Engineering** | 10-14h | 12 | ✅ Concluído |
-| 4 | **Análise & Visualização** | 8-10h | 10 | ⬜ Não iniciado |
+| 4 | **Análise & Visualização** | 8-10h | 10 | 🔵 Em andamento |
 | 5 | **Machine Learning (MLflow)** | 14-18h | 12 | ⬜ Não iniciado |
 | 6 | **Validação & Avaliação** | 2-3h | 3 | ⬜ Não iniciado |
 | 7 | **Deployment & Automação** | 4-6h | 5 | ⬜ Não iniciado |
@@ -631,7 +631,7 @@ A concentração em "alta" reflete os botões de gorjeta pré-definidos (20%/25%
 
 ---
 
-### 📍 Fase 4: Análise & Visualização (8-10 horas)
+### 📍 Fase 4: Análise & Visualização (8-10 horas) 🔵 Em andamento
 
 **Objetivo:** Gerar insights executivos e dashboard interativo
 
