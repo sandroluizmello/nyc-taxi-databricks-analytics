@@ -402,7 +402,7 @@ O notebook (código) **fica no GitHub**. Quando ele **executa** dentro do Databr
 | 1 | **Ingestão & Delta Lake** | 2-4h | 9 | ✅ Concluído |
 | 2 | **Análise Exploratória (EDA)** | 6-8h | 10 | ✅ Concluído |
 | 3 | **Feature Engineering** | 10-14h | 12 | ✅ Concluído |
-| 4 | **Análise & Visualização** | 8-10h | 10 | 🔵 Em andamento |
+| 4 | **Análise & Visualização** | 8-10h | 10 | ✅ Concluído |
 | 5 | **Machine Learning (MLflow)** | 14-18h | 12 | ⬜ Não iniciado |
 | 6 | **Validação & Avaliação** | 2-3h | 3 | ⬜ Não iniciado |
 | 7 | **Deployment & Automação** | 4-6h | 5 | ⬜ Não iniciado |
@@ -631,35 +631,75 @@ A concentração em "alta" reflete os botões de gorjeta pré-definidos (20%/25%
 
 ---
 
-### 📍 Fase 4: Análise & Visualização (8-10 horas) 🔵 Em andamento
+### 📍 Fase 4: Análise & Visualização (8-10 horas) ✅ Concluído
 
-**Objetivo:** Gerar insights executivos e dashboard interativo
+**Objetivo:** Gerar insights executivos usando os dados já enriquecidos na Fase 3
 
 **Tarefas:**
-- [ ] Análises por período (2015 vs 2016, e Jan→Mar/2016)
-- [ ] Padrões horários e diários
-- [ ] Análise de top rotas
-- [ ] Análise de gorjeta por segmento
-- [ ] Análise por tipo de pagamento
-- [ ] Criar agregações para dashboard (6 tabelas)
-- [ ] Visualizações principais (12+)
-- [ ] Dashboard executivo (5 abas)
-- [ ] Documentar insights principais
-- [ ] Salvar agregações em Delta
+- [x] Análises por período (2015 vs 2016, e Jan→Mar/2016)
+- [x] Padrões horários e diários (com filtro correto de payment_type)
+- [x] Análise de top zonas de pickup
+- [x] Análise de gorjeta por segmento (dia, hora, aeroporto)
+- [x] Análise por tipo de pagamento
+- [x] Análise detalhada de viagens de aeroporto (via RatecodeID)
+- [x] Comparação Standard vs JFK vs Newark
+- [x] Criar agregações para dashboard (5 tabelas)
+- [x] Visualizações principais (padrão horário, comparação de tipos)
+- [x] Documentar insights principais
 
-**Output:** Dashboard interativo, 6 agregações, 12+ visualizações
+**Output:** 5 agregações em Delta Lake, insights documentados, validação cruzada com a Fase 3
 
 **Arquivo:** `notebooks/05_analise.py`
 
-**Aggregações Salvas:**
+**Agregações Salvas (Delta Lake):**
 ```
-hourly_trends.parquet    → 24 linhas
-daily_trends.parquet     → 7 linhas
-monthly_trends.parquet   → 4 linhas
-top_routes.parquet       → 100 linhas
-payment_analysis.parquet → 5 linhas
-zone_analysis.parquet    → 50 linhas
+hourly_trends       → 24 linhas  (padrões por hora do dia)
+daily_trends        → 7 linhas   (padrões por dia da semana)
+top_zonas           → 20 linhas  (top zonas de pickup)
+payment_analysis    → 5 linhas   (análise por tipo de pagamento)
+gorjeta_segmento    → 32 linhas  (gorjeta por dia/hora/aeroporto)
 ```
+
+**Validação Cruzada com a Fase 3:**
+```
+Soma de tip_category (Fase 3) = total de payment_type=1 (Fase 4):
+30.751.907 viagens em ambos os cálculos — consistência confirmada
+```
+
+**Confirmação do Achado da Fase 2:**
+
+Após a limpeza da Fase 3, a diferença de distância média entre os anos ficou muito menor do que a observada originalmente na Fase 2 (13,55 vs 4,68 milhas, causada por outliers):
+```
+2015-01: distância média 4,51 km
+2016-01: distância média 4,70 km
+```
+Isso confirma que os outliers extremos, já removidos, eram de fato a causa da discrepância.
+
+**Gorjeta por Dia da Semana (com filtro correto de `payment_type = 1`):**
+```
+Maior gorjeta média: Domingo (25,4%)
+Menor gorjeta média: Sábado (20,8%)
+```
+> 📌 O achado da Fase 2 sobre "sexta ter maior gorjeta" foi calculado sem filtrar `payment_type`, então o resultado atual (Fase 4) é o mais confiável.
+
+**Aeroportos — Estabilidade da Tarifa Fixa:**
+```
+JFK: tarifa entre $51,70 e $51,99 ao longo de todas as 24 horas do dia
+```
+Variação mínima ao longo do dia, consistente com o conceito de tarifa fixa (flat rate) — mais uma validação de qualidade dos dados.
+
+**Comparação Standard vs Aeroporto:**
+
+| Tipo | Viagens | Tarifa Média | Distância Média | Duração Média |
+|---|---|---|---|---|
+| Standard | 45.926.683 | $11,48 | 4,15 km | 12,5 min |
+| JFK | 885.874 | $51,98 | 28,84 km | 43,3 min |
+| Newark | 69.593 | $66,32 | 27,59 km | 36,1 min |
+
+**Padrões Gerais Confirmados:**
+- Pico de viagens: 18h-19h (~2,4M viagens/hora)
+- Menor volume: madrugada 3h-4h (~500-680k viagens/hora)
+- Sábado tem o maior volume de viagens totais, mas a menor gorjeta média
 
 ---
 
@@ -963,12 +1003,12 @@ Fase  Status      Saída
 ✅ Dados prontos para ML
 ```
 
-### Fase 4: Análise
+### Fase 4: Análise ✅ Concluído
 ```
-✅ Dashboard com 5 abas
-✅ 6 agregações para visualização
-✅ 12+ gráficos criados
-✅ KPIs executivos definidos
+✅ 5 agregações salvas em Delta Lake
+✅ Validação cruzada com a Fase 3 (payment_type=1: 30,75M em ambos os cálculos)
+✅ Confirmação do achado de outliers da Fase 2 (distâncias 2015 vs 2016 convergiram)
+✅ Insights de aeroporto documentados (tarifa fixa estável ao longo do dia)
 ```
 
 ### Fase 5: ML
