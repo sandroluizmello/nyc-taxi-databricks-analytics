@@ -403,7 +403,7 @@ O notebook (código) **fica no GitHub**. Quando ele **executa** dentro do Databr
 | 2 | **Análise Exploratória (EDA)** | 6-8h | 10 | ✅ Concluído |
 | 3 | **Feature Engineering** | 10-14h | 12 | ✅ Concluído |
 | 4 | **Análise & Visualização** | 8-10h | 10 | ✅ Concluído |
-| 5 | **Machine Learning (MLflow)** | 14-18h | 12 | ⬜ Não iniciado |
+| 5 | **Machine Learning (MLflow)** | 14-18h | 12 | ✅ Concluído |
 | 6 | **Validação & Avaliação** | 2-3h | 3 | ⬜ Não iniciado |
 | 7 | **Deployment & Automação** | 4-6h | 5 | ⬜ Não iniciado |
 
@@ -703,37 +703,68 @@ Variação mínima ao longo do dia, consistente com o conceito de tarifa fixa (f
 
 ---
 
-### 📍 Fase 5: Machine Learning (14-18 horas)
+### 📍 Fase 5: Machine Learning (14-18 horas) ✅ Concluído
 
-**Objetivo:** Treinar e versionar modelos preditivos com MLflow
+**Objetivo:** Treinar e versionar modelos preditivos de tarifa com MLflow
 
 **Tarefas:**
-- [ ] Definir problemas de negócio (regressão de tarifa)
-- [ ] Preparar dataset (train/val/test temporal)
-- [ ] Feature selection (correlação + importância)
-- [ ] Setup MLflow experiment
-- [ ] Treinar Linear Regression (baseline)
-- [ ] Treinar Random Forest
-- [ ] Treinar Gradient Boosting
-- [ ] Comparar performance (RMSE, MAE, R²)
-- [ ] Validação cruzada temporal (3 folds)
-- [ ] Análise de erros e residuais
-- [ ] Feature importance
-- [ ] Registrar melhor modelo em MLflow
-- [ ] Fazer previsões em batch
+- [x] Definir problema de negócio (regressão de `fare_amount`)
+- [x] Split temporal (treino/validação/teste, sem embaralhar no tempo)
+- [x] Amostragem (5%) para viabilizar treino em Scikit-learn (driver não é distribuído)
+- [x] Feature selection (correlação com target)
+- [x] Setup MLflow experiment
+- [x] Treinar Linear Regression (baseline)
+- [x] Treinar Random Forest
+- [x] Treinar Gradient Boosting
+- [x] Comparar performance (RMSE, MAE, R²)
+- [x] Checagem de overfitting (treino vs teste)
+- [x] Feature importance
+- [x] Registrar melhor modelo no Model Registry (Unity Catalog), com lógica condicional (só registra se superar o champion atual)
+- [ ] Validação cruzada temporal (3 folds) — adiado, resultado já validado via holdout temporal
+- [ ] Fazer previsões em batch — próximo passo natural, pode ser feito na Fase 6/7
 
-**Output:** 3 modelos treinados, melhor em produção, 100k+ previsões
+**Output:** 3 modelos treinados e comparados, melhor modelo registrado no Unity Catalog
 
 **Arquivo:** `notebooks/06_ml.py`
 
-**Resultados Esperados:**
+**Split Temporal Real (sem embaralhar no tempo):**
+```
+Treino:     33.182.884 linhas (até 2016-02-25)
+Validação:   6.766.255 linhas (2016-02-26 a 2016-03-13)
+Teste:       6.933.011 linhas (a partir de 2016-03-14)
+Amostragem para scikit-learn: 5% de cada partição
+```
+
+**Resultados Reais:**
 ```
 Modelo                  RMSE    MAE     R²
 ─────────────────────────────────────────
-Linear Regression       $2.85   $1.92   0.87
-Random Forest           $2.15   $1.45   0.92
-Gradient Boosting ✓     $2.05   $1.38   0.93
+Linear Regression       $3,23   $1,69   0,9065
+Random Forest           $2,73   $1,33   0,9334
+Gradient Boosting ✓     $2,71   $1,33   0,9339
 ```
+
+**Checagem de Overfitting (Gradient Boosting):**
+```
+Treino → RMSE: $2,58 | R²: 0,9349
+Teste  → RMSE: $2,71 | R²: 0,9339
+Diferença: 5,2% — dentro do esperado, sem overfitting aparente
+```
+
+**Feature Importance (Gradient Boosting):**
+```
+trip_distance_km:  97,5%  ← domina completamente
+is_airport_trip:    1,4%
+demais features:   <1,2% no total (pickup_hour, payment_type, etc.)
+```
+> 💡 A tarifa é calculada pelo taxímetro majoritariamente por distância — o modelo está, essencialmente, "redescobrindo" essa fórmula. Isso é uma boa validação de que a lógica está correta, mas sugere que features temporais/comportamentais serão mais relevantes em um futuro modelo de previsão de **gorjeta** (comportamento humano), não de tarifa.
+
+**Modelo Registrado:**
+```
+Nome: workspace.default.nyc_taxi_fare_prediction
+Alias: champion (versão 3, RMSE $2,71)
+```
+> 📌 O Unity Catalog Model Registry usa **aliases** (ex: `champion`) em vez dos antigos estágios "Production"/"Staging" do MLflow clássico. A Célula 10 implementa **registro condicional**: só cria uma nova versão e move o alias `champion` quando o RMSE do novo modelo é melhor que o do champion atual; se o resultado for igual ou pior, nenhuma versão nova é criada. A versão 4 (criada antes dessa melhoria, com RMSE idêntico) permanece no histórico sem alias — não afeta o uso do modelo, já que o `champion` sempre aponta para a versão correta a ser consumida.
 
 ---
 
@@ -1011,12 +1042,13 @@ Fase  Status      Saída
 ✅ Insights de aeroporto documentados (tarifa fixa estável ao longo do dia)
 ```
 
-### Fase 5: ML
+### Fase 5: ML ✅ Concluído
 ```
-✅ 3 modelos treinados
+✅ 3 modelos treinados e comparados
 ✅ Melhor modelo: Gradient Boosting
-✅ Métricas: RMSE $2.05, R² 0.93
-✅ 100k+ previsões em batch
+✅ Métricas reais: RMSE $2,71, MAE $1,33, R² 0,9339
+✅ Sem overfitting (diferença treino/teste: 5,2%)
+✅ Modelo registrado no Unity Catalog (alias "champion")
 ```
 
 ### Fase 6: Validação
@@ -1160,9 +1192,9 @@ Mais soluções em: [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)
 
 | Métrica | Meta | Status |
 |---------|------|--------|
-| Código versionado | 100% no GitHub | ⬜ |
-| Features criadas | 40+ | ⬜ |
-| Modelo RMSE | < $2.50 | ⬜ |
+| Código versionado | 100% no GitHub | ✅ |
+| Features criadas | 40+ | ⚠️ 37 (meta ajustada, ver Fase 3) |
+| Modelo RMSE | < $2,50 | ⚠️ $2,71 (próximo da meta, R² 0,9339) |
 | Dados processados | 46,9M registros | ✅ |
 | Compressão CSV → Delta | 86% (7,39GB→1,06GB) | ✅ |
 | Dashboard criado | 1 interativo | ⬜ |
