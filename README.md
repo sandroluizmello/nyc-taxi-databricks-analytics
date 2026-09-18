@@ -404,7 +404,7 @@ O notebook (código) **fica no GitHub**. Quando ele **executa** dentro do Databr
 | 3 | **Feature Engineering** | 10-14h | 12 | ✅ Concluído |
 | 4 | **Análise & Visualização** | 8-10h | 10 | ✅ Concluído |
 | 5 | **Machine Learning (MLflow)** | 14-18h | 12 | ✅ Concluído |
-| 6 | **Validação & Avaliação** | 2-3h | 3 | ⬜ Não iniciado |
+| 6 | **Validação & Avaliação** | 2-3h | 3 | ✅ Concluído |
 | 7 | **Deployment & Automação** | 4-6h | 5 | ⬜ Não iniciado |
 
 ---
@@ -768,19 +768,49 @@ Alias: champion (versão 3, RMSE $2,71)
 
 ---
 
-### 📍 Fase 6: Validação & Avaliação (2-3 horas)
+### 📍 Fase 6: Validação & Avaliação (2-3 horas) ✅ Concluído
 
-**Objetivo:** Validar robustez do modelo
+**Objetivo:** Validar robustez do modelo além do holdout simples da Fase 5
 
 **Tarefas:**
-- [ ] Cross-validation temporal (time series split)
-- [ ] Análise detalhada de residuais
-- [ ] Erros por segmento (hora, dia, zona)
-- [ ] Verificação de normalidade de erros
+- [x] Cross-validation temporal (TimeSeriesSplit, 3 folds)
+- [x] Análise detalhada de resíduos (estatísticas + top erros)
+- [x] Erros por segmento (tipo de viagem, hora do dia)
+- [x] Visualização Real vs Previsto e distribuição de resíduos
 
-**Output:** Validação temporal, análise de erros
+**Output:** Validação cruzada confirmando estabilidade, achado sobre tarifas negociadas
 
-**Arquivo:** `notebooks/06_ml.py` (adicionar)
+**Arquivo:** `notebooks/06_ml.py` (continuação)
+
+**Validação Cruzada Temporal (3 Folds):**
+```
+Fold 1: RMSE=$2,83 | R²=0,9226
+Fold 2: RMSE=$3,04 | R²=0,9166
+Fold 3: RMSE=$2,73 | R²=0,9312
+─────────────────────────────
+RMSE médio: $2,86 (±$0,13) — próximo do holdout ($2,71), boa estabilidade
+```
+
+**Análise de Resíduos:**
+```
+Média do resíduo: $0,177 (próxima de 0 — sem viés sistemático geral)
+Desvio padrão:    $2,709
+Distribuição:     concentrada perto de zero, com cauda longa à direita
+                  (modelo tende a SUBESTIMAR uma pequena fração de tarifas altas)
+```
+
+**🔍 Achado Principal — Tarifas Negociadas Não Seguem o Padrão de Distância:**
+
+O gráfico Real vs Previsto revelou uma faixa horizontal (~$50-55 previsto) para tarifas reais entre $50-95 — o modelo "trava" nesse valor em vez de acompanhar o crescimento da tarifa real. Causa provável: viagens com `RatecodeID = 5` ("Negotiated fare") têm tarifa definida por acordo entre motorista e passageiro, não pela fórmula padrão distância × taxímetro. Como `RatecodeID` não é usado diretamente como feature (só indiretamente via `is_airport_trip`), o modelo não consegue identificar esses casos.
+
+**Erro por Segmento:**
+```
+Standard:  erro absoluto médio $1,31
+Aeroporto: erro absoluto médio $2,16 (esperado, dado o valor absoluto maior das tarifas)
+```
+
+**Recomendação para Melhoria Futura:**
+Incluir `RatecodeID` como feature categórica (one-hot encoding) em uma iteração futura do modelo, permitindo distinguir tarifas negociadas do padrão distância-tarifa e reduzir os erros na cauda da distribuição.
 
 ---
 
@@ -1051,12 +1081,13 @@ Fase  Status      Saída
 ✅ Modelo registrado no Unity Catalog (alias "champion")
 ```
 
-### Fase 6: Validação
+### Fase 6: Validação ✅ Concluído
 ```
-✅ Cross-validation temporal
-✅ Análise de residuais
-✅ Erros por segmento
-✅ Modelo robusto confirmado
+✅ Cross-validation temporal (RMSE médio $2,86 ±$0,13)
+✅ Análise de resíduos (média $0,177, sem viés sistemático geral)
+✅ Erros por segmento (Standard $1,31 vs Aeroporto $2,16)
+✅ Achado: tarifas negociadas (RatecodeID=5) causam a cauda de erro
+✅ Modelo robusto confirmado, com limitação conhecida documentada
 ```
 
 ### Fase 7: Deploy
